@@ -106,7 +106,7 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//   Build Professional Discord Embed 
+//   Build Professional Discord Embed
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -153,12 +153,17 @@ function buildOrderEmbed(order, state = "new") {
         inline: false,
       },
       {
+        name: "📞  Phone Number", // حقل رقم الهاتف الجديد
+        value: order.phone ? `\`\`\`${order.phone}\`\`\`` : "```—```",
+        inline: false,
+      },
+      {
         name: "📦  Package / Title",
         value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
         inline: false,
       },
       {
-        name: "🆔  Order ID",
+        name: "🆔  Order ID", // حقل الـ Order ID بشكل منظم وطولي
         value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
         inline: false,
       }
@@ -172,6 +177,7 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
+  // إرجاع كود الصورة الكبيرة العريضة بالأسفل بدلاً من التمبنيل الصغير
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   }
@@ -272,7 +278,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
 }
 
 // ==========================================
-//   Button Interaction Handler (تم تصليح خطأ orderId هنا)
+//   Button Interaction Handler
 // ==========================================
 
 client.on("interactionCreate", async (interaction) => {
@@ -312,7 +318,7 @@ client.on("interactionCreate", async (interaction) => {
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
-    // تم تصليح السطر ده هنا واستبدال orderId بـ orderUniqueId المِتْعرّفة فوق
+    // تم تصليح الغلطة هنا واستبدال المتغير بـ orderUniqueId لتجنب الكراش
     await interaction.reply({
       content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || orderUniqueId}\``,
       ephemeral: false,
