@@ -99,14 +99,14 @@ async function ensureTable() {
 // ==========================================
 
 function parseColor(colorStr) {
-  if (!colorStr) return 0x00ffcc; // اللون النيون المائل للأزرق/الأخضر الأساسي في تصميمك
+  if (!colorStr) return 0x00ffcc; 
   const hex = colorStr.replace("#", "").trim();
   const parsed = parseInt(hex, 16);
   return isNaN(parsed) ? 0x00ffcc : parsed;
 }
 
 // ==========================================
-//   Build Professional Discord Embed (تعديل الشكل الأصلي بالملي)
+//   Build Professional Discord Embed 
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -124,46 +124,42 @@ function buildOrderEmbed(order, state = "new") {
     embedTitle = `🗄️  ${serverName}`;
   }
 
-  // بناء الشكل المطابق للصورة الأساسية: صناديق طولية عريضة
+  // تم تظبيط الـ الرموز لضمان ظهور الصناديق كاملة بدون أي مشاكل أو اختفاء
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(embedTitle)
-    .setDescription(
-      "```\nNew recharge request received.\nWaiting for admin review.\n```"
-    )
+    .setDescription("```\nNew recharge request received.\nWaiting for admin review.\n```")
     .addFields(
       {
         name: "👤 Player",
-        value: order.player_name ? `\`\`\`\n${order.player_name}\n\`\`\`` : "```\nUnknown\n```",
+        value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
         inline: false,
       },
       {
         name: "#️⃣ UID",
-        value: order.uid ? `\`\`\`\n${order.uid}\n\`\`\`` : "```\n—\n```",
+        value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
         inline: false,
       },
       {
         name: "🔴 Package",
-        value: order.title ? `\`\`\`\n${order.title}\n\`\`\`` : "```\n(No title)\n```",
+        value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
         inline: false,
       },
       {
         name: "📄 Order ID",
-        value: order.order_id ? `\`\`\`\n${order.order_id}\n\`\`\`` : order.id ? `\`\`\`\n${order.id}\n\`\`\`` : "```\n—\n```",
+        value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
         inline: false,
       }
     );
 
-  // إظهار الوصف الإضافي إذا وجد في قاعدة البيانات
   if (order.description) {
     embed.addFields({
       name: "📝 Description",
-      value: `\`\`\`\n${order.description}\n\`\`\``.slice(0, 1024),
+      value: `\`\`\`${order.description}\`\`\``.slice(0, 1024),
       inline: false,
     });
   }
 
-  // عرض الصورة الكبيرة العريضة أسفل الصناديق مباشرة كما بالصورة الأساسية
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   }
@@ -305,7 +301,6 @@ client.on("interactionCreate", async (interaction) => {
       ephemeral: false,
     });
 
-    // Send detailed log to log channel
     const enrichedOrder = {
       ...order,
       _channelId:   message.channel?.id   || "—",
