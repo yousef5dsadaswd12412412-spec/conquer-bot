@@ -12,7 +12,7 @@ const {
 const mysql = require("mysql2/promise");
 
 // ==========================================
-//   Validate Required Environment Variables
+//    Validate Required Environment Variables
 // ==========================================
 
 const REQUIRED_ENV = [
@@ -35,7 +35,7 @@ const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "10000", 10);
 const SERVER_DISPLAY_NAME = process.env.SERVER_NAME || "Conquer Online";
 
 // ==========================================
-//   Discord Client Setup
+//    Discord Client Setup
 // ==========================================
 
 const client = new Client({
@@ -43,7 +43,7 @@ const client = new Client({
 });
 
 // ==========================================
-//   MySQL Connection Pool
+//    MySQL Connection Pool
 // ==========================================
 
 let db;
@@ -70,7 +70,7 @@ async function connectDatabase() {
 }
 
 // ==========================================
-//   Ensure `sent` Column Exists in orders
+//    Ensure `sent` Column Exists in orders
 // ==========================================
 
 async function ensureTable() {
@@ -95,7 +95,7 @@ async function ensureTable() {
 }
 
 // ==========================================
-//   Parse Embed Color
+//    Parse Embed Color
 // ==========================================
 
 function parseColor(colorStr) {
@@ -106,7 +106,7 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//   Build Professional Discord Embed
+//    Build Professional Discord Embed
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -128,7 +128,7 @@ function buildOrderEmbed(order, state = "new") {
     descPrefix = "Account has been **banned** on";
   } else {
     color = parseColor(order.embed_color);
-    embedTitle = "💎  New Order Received";
+    embedTitle = "<a:1388165196979372183:1506824164370022501>  New Order Received";
     descPrefix = "A new order has been placed successfully on";
   }
 
@@ -138,32 +138,32 @@ function buildOrderEmbed(order, state = "new") {
     .setDescription(`${descPrefix} **${serverName}**.`)
     .addFields(
       {
-        name: "👤  Player",
+        name: " <a:ss:1506824164370022501>  Player",
         value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
         inline: false,
       },
       {
-        name: "🖥️  Server",
-        value: `\`\`\`${serverName}\`\`\``,
+        name: " <:45:1506991248026767451>  Server",
+        value: `\`\`\`${SERVER_DISPLAY_NAME}\`\`\``,
         inline: false,
       },
       {
-        name: "🔑  UID",
+        name: " <:32:1506991254506967060>  UID",
         value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
         inline: false,
       },
       {
-        name: "📞  Phone Number", // حقل رقم الهاتف الجديد
+        name: "📞  Phone Number", // إضافة حقل رقم الهاتف للأوردر
         value: order.phone ? `\`\`\`${order.phone}\`\`\`` : "```—```",
         inline: false,
       },
       {
-        name: "📦  Package / Title",
+        name: " <:99:1506991252699086909>  Package / Title",
         value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
         inline: false,
       },
       {
-        name: "🆔  Order ID", // حقل الـ Order ID بشكل منظم وطولي
+        name: "🆔  Order ID", // عرض الـ ID بشكل طولي منسق
         value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
         inline: false,
       }
@@ -172,12 +172,12 @@ function buildOrderEmbed(order, state = "new") {
   if (order.description) {
     embed.addFields({
       name: "📝  Description",
-      value: `\`\`\`${order.description}\`\`\``.slice(0, 1024),
+      value: `\`\`\`${order.description.slice(0, 1018)}\`\`\``,
       inline: false,
     });
   }
 
-  // إرجاع كود الصورة الكبيرة العريضة بالأسفل بدلاً من التمبنيل الصغير
+  // إرجاع كود الصورة الكاملة العريضة (setImage بدلاً من setThumbnail)
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   }
@@ -190,7 +190,7 @@ function buildOrderEmbed(order, state = "new") {
 }
 
 // ==========================================
-//   Build 3-Button Row
+//    Build 3-Button Row
 // ==========================================
 
 function buildButtonRow(orderUniqueId) {
@@ -208,7 +208,7 @@ function buildButtonRow(orderUniqueId) {
 }
 
 // ==========================================
-//   Send Log to Log Channel
+//    Send Log to Log Channel
 // ==========================================
 
 async function sendLog(logEmbed) {
@@ -278,7 +278,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
 }
 
 // ==========================================
-//   Button Interaction Handler
+//    Button Interaction Handler
 // ==========================================
 
 client.on("interactionCreate", async (interaction) => {
@@ -305,9 +305,19 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   try {
-    const [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
+    console.log(`[BOT] Button clicked — customId: ${customId} | orderUniqueId: ${orderUniqueId}`);
+
+    let [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
+
     if (rows.length === 0) {
-      await interaction.reply({ content: "⚠️ Order not found.", ephemeral: true });
+      console.log(`[BOT] Not found by id, trying order_id...`);
+      [rows] = await db.query("SELECT * FROM orders WHERE order_id = ?", [orderUniqueId]);
+    }
+
+    console.log(`[BOT] Query result: ${rows.length} row(s) found`);
+
+    if (rows.length === 0) {
+      await interaction.reply({ content: "⚠️ Order not found.", flags: 64 });
       return;
     }
 
@@ -318,9 +328,9 @@ client.on("interactionCreate", async (interaction) => {
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
-    // تم تصليح الغلطة هنا واستبدال المتغير بـ orderUniqueId لتجنب الكراش
+    // تم إصلاح الغلطة هنا لتعريف المتغير الصحيح ومنع الكراش
     await interaction.reply({
-      content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || orderUniqueId}\``,
+      content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || order.id}\``,
       ephemeral: false,
     });
 
@@ -364,7 +374,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ==========================================
-//   Fetch & Process New Orders
+//    Fetch & Process New Orders (تم إصلاح الإرسال بالكامل هنا)
 // ==========================================
 
 let isProcessing = false;
@@ -397,14 +407,17 @@ async function checkNewOrders() {
       try {
         const dbId = String(order.id);
 
+        // هنا تم إعادة كود بناء الـ Embed والـ Buttons وإرسالهم فوراً ديسكورد
         const embed = buildOrderEmbed(order);
         const row = buildButtonRow(dbId);
 
         await channel.send({ embeds: [embed], components: [row] });
+        
+        // تحديث حالة الأوردر في القاعدة بعد الإرسال بنجاح
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
         console.log(
-          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — "${order.title}" → Sent & marked.`
+          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — Sent to Discord & marked as 1.`
         );
       } catch (orderErr) {
         const errDetail = orderErr.rawError
@@ -428,6 +441,7 @@ async function checkNewOrders() {
           .setTimestamp();
         await sendLog(errEmbed);
 
+        // وضع القيمة 2 لمنع حدوث Loop تكرار لا نهائي في حالة حدوث مشكلة في إرسال أوردر معين
         await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
       }
     }
@@ -439,7 +453,7 @@ async function checkNewOrders() {
 }
 
 // ==========================================
-//   Bot Ready Event
+//    Bot Ready Event
 // ==========================================
 
 client.once("ready", async () => {
@@ -455,7 +469,7 @@ client.once("ready", async () => {
 });
 
 // ==========================================
-//   Graceful Shutdown
+//    Graceful Shutdown
 // ==========================================
 
 async function shutdown(signal) {
@@ -472,7 +486,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 // ==========================================
-//   Start Bot
+//    Start Bot
 // ==========================================
 
 (async () => {
