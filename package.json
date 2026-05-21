@@ -1,0 +1,15 @@
+{
+  "name": "conquer-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for Conquer Online payment notifications via MySQL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "mysql2": "^3.11.5",
+    "dotenv": "^16.4.7"
+  }
+}
