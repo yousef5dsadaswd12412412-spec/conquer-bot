@@ -86,7 +86,7 @@ async function ensureTable() {
     `);
     if (cols.length === 0) {
       await db.query(`ALTER TABLE orders ADD COLUMN sent TINYINT(1) NOT NULL DEFAULT 0`);
-      console.log("[DB] Added `sent` column to orders table.");
+      console.log("[DB] Added \`sent\` column to orders table.");
     }
   });
 
@@ -116,11 +116,11 @@ function buildOrderEmbed(order, state = "new") {
   let color, embedTitle, descPrefix;
   
   if (state === "confirmed") {
-    color = 0x2ecc71; // أخضر
+    color = 0x2ecc71; // أخضر عند القبول
     embedTitle = "✅  Order Confirmed";
     descPrefix = "Order has been **confirmed** on";
   } else if (state === "rejected") {
-    color = 0xe74c3c; // أحمر
+    color = 0xe74c3c; // أحمر عند الرفض
     embedTitle = "🚫  Order Rejected";
     descPrefix = "Order has been **rejected** on";
   } else if (state === "banned") {
@@ -128,8 +128,7 @@ function buildOrderEmbed(order, state = "new") {
     embedTitle = "🔨  Account Banned";
     descPrefix = "Account has been **banned** on";
   } else {
-    // التعديل هنا: خليناه ياخد اللون الذهبي/الأصفر الافتراضي المتناسق للأوردر الجديد
-    color = parseColor(order.embed_color);
+    color = parseColor(order.embed_color); // برتقالي / أصفر مائل للذهبي للطلب الجديد
     embedTitle = "📦  New Order Received"; 
     descPrefix = "A new order has been placed successfully on";
   }
@@ -141,12 +140,12 @@ function buildOrderEmbed(order, state = "new") {
     .addFields(
       {
         name: "👤  Player",
-        value: order.player_name ? `\`${order.player_name}\`` : "`Unknown`",
+        value: order.player_name ? `\`${order.player_name}\`` : "\`Unknown\`",
         inline: true,
       },
       {
         name: "🔑  UID",
-        value: order.uid ? `\`${order.uid}\`` : "`—`",
+        value: order.uid ? `\`${order.uid}\`` : "\`—\`",
         inline: true,
       },
       {
@@ -156,7 +155,7 @@ function buildOrderEmbed(order, state = "new") {
       },
       {
         name: "📦  Package / Title",
-        value: order.title ? `\`${order.title}\`` : "`—`",
+        value: order.title ? `\`${order.title}\`` : "\`—\`",
         inline: true,
       },
       {
@@ -166,21 +165,23 @@ function buildOrderEmbed(order, state = "new") {
       },
       {
         name: "🛡️  Admin",
-        value: "`System`", // دايماً بيبدأ تبع النظام لحد ما المشرف يقبله
+        value: "\`System\`", 
         inline: true,
       }
     );
 
-  // إضافة حقل الوصف فقط لو كان موجود في داتا الأوردر الجديد
   if (order.description) {
     embed.addFields({
       name: "📝  Description",
-      value: order.description ? `> ${order.description}`.slice(0, 512) : "> —",
+      value: `${order.description}`.slice(0, 512),
       inline: false,
     });
   }
 
-  if (order.image_url && /^https?:\/\//i.test(order.image_url)) embed.setThumbnail(order.image_url);
+  // لو الـ Database باعتة رابط صورة لوجو السيرفر، بيظهر كـ Thumbnail صغير على اليمين فوق وبشكل شيك
+  if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
+    embed.setThumbnail(order.image_url);
+  }
 
   embed
     .setFooter({ text: `${SERVER_DISPLAY_NAME} • Order System` })
@@ -190,7 +191,7 @@ function buildOrderEmbed(order, state = "new") {
 }
 
 // ==========================================
-//   Build 3-Button Row
+//   Build Action Buttons
 // ==========================================
 
 function buildButtonRow(orderUniqueId) {
@@ -247,7 +248,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
       },
       {
         name: "📦  Package",
-        value: order.title ? `\`${order.title}\`` : "`—`",
+        value: order.title ? `\`${order.title}\`` : "\`—\`",
         inline: true,
       },
       {
@@ -257,7 +258,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
       },
       {
         name: "🛡️  Admin",
-        value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "`System`",
+        value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "\`System\`",
         inline: true,
       },
       {
@@ -269,7 +270,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
         name: "📡  Received From",
         value: messageUrl
           ? `**Channel:** <#${order._channelId || "—"}>  \`${order._channelName || "—"}\`\n**Server:** \`${order._guildName || "—"}\`\n**[🔗 Jump to Message](${messageUrl})**`
-          : "`—`",
+          : "\`—\`",
         inline: false,
       }
     )
@@ -315,10 +316,9 @@ client.on("interactionCreate", async (interaction) => {
 
     await db.query("UPDATE orders SET status = ? WHERE id = ?", [newStatus, order.id]);
 
-    // هنا هيمسح الزراير ويحدث الإيمبد لشكل القبول الاحترافي الجديد
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     
-    // تعديل بسيط عشان يظهر اسم الأدمن اللي وافق في حقل الـ Admin عند التحديث
+    // تعديل خانة الأدمن تلقائياً لتظهر منشن الشخص اللي ضغط الزرار
     updatedEmbed.spliceFields(5, 1, {
       name: "🛡️  Admin",
       value: `<@${user.id}>`,
@@ -332,7 +332,7 @@ client.on("interactionCreate", async (interaction) => {
       ephemeral: false,
     });
 
-    // Send detailed log to log channel
+    // إرسال اللوق التفصيلي لقناة اللوجات الإدارية
     const enrichedOrder = {
       ...order,
       _channelId:   message.channel?.id   || "—",
@@ -353,7 +353,6 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     console.error(`[BOT] Error processing order #${orderUniqueId}:`, err.message);
 
-    // Log error to log channel
     const errEmbed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle("🚨  Bot Error")
@@ -374,7 +373,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ==========================================
-//   Fetch & Process New Orders
+//   Fetch & Process New Orders (No Dubbed)
 // ==========================================
 
 let isProcessing = false;
@@ -392,8 +391,9 @@ async function checkNewOrders() {
       return;
     }
 
+    // جلب سطر واحد فقط بكل دورة فحص لحماية البوت من الـ Race Condition والتكرار
     const [rows] = await db.query(
-      "SELECT * FROM orders WHERE sent = 0 ORDER BY created_at ASC LIMIT 10"
+      "SELECT * FROM orders WHERE sent = 0 ORDER BY created_at ASC LIMIT 1"
     );
 
     if (rows.length === 0) {
@@ -401,46 +401,44 @@ async function checkNewOrders() {
       return;
     }
 
-    console.log(`[BOT] Found ${rows.length} new order(s) to process.`);
+    const order = rows[0];
+    const dbId = String(order.id);
 
-    for (const order of rows) {
-      try {
-        const dbId = String(order.id);
+    // تحديث الحالة فوراً في قاعدة البيانات قبل إرسال ديسكورد لمنع التكرار نهائياً
+    await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
-        const embed = buildOrderEmbed(order);
-        const row = buildButtonRow(dbId);
+    try {
+      const embed = buildOrderEmbed(order);
+      const row = buildButtonRow(dbId);
 
-        await channel.send({ embeds: [embed], components: [row] });
-        await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
+      await channel.send({ embeds: [embed], components: [row] });
 
-        console.log(
-          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — "${order.title}" → Sent & marked.`
-        );
-      } catch (orderErr) {
-        const errDetail = orderErr.rawError
-          ? JSON.stringify(orderErr.rawError)
-          : orderErr.errors
-          ? JSON.stringify(orderErr.errors)
-          : orderErr.message;
+      console.log(
+        `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} → Sent successfully.`
+      );
+    } catch (orderErr) {
+      const errDetail = orderErr.rawError
+        ? JSON.stringify(orderErr.rawError)
+        : orderErr.errors
+        ? JSON.stringify(orderErr.errors)
+        : orderErr.message;
 
-        console.error(`[BOT] Full error for order #${order.id}:`, errDetail);
+      console.error(`[BOT] Error sending order #${order.id}:`, errDetail);
 
-        // Log send error to log channel
-        const errEmbed = new EmbedBuilder()
-          .setColor(0xff0000)
-          .setTitle("🚨  Send Error")
-          .addFields(
-            { name: "❌  Error",     value: `\`\`\`${errDetail.slice(0, 900)}\`\`\``, inline: false },
-            { name: "🆔  Order ID", value: `\`${String(order.order_id || order.id).slice(0, 100)}\``, inline: true },
-            { name: "👤  Player",   value: `\`${order.player_name || "—"}\``,   inline: true },
-            { name: "🖥️  Server",  value: `\`${order.server_name || "—"}\``,   inline: true }
-          )
-          .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
-          .setTimestamp();
-        await sendLog(errEmbed);
+      const errEmbed = new EmbedBuilder()
+        .setColor(0xff0000)
+        .setTitle("🚨  Send Error")
+        .addFields(
+          { name: "❌  Error",     value: `\`\`\`${errDetail.slice(0, 900)}\`\`\``, inline: false },
+          { name: "🆔  Order ID", value: `\`${dbId}\``, inline: true },
+          { name: "👤  Player",   value: `\`${order.player_name || "—"}\``,   inline: true }
+        )
+        .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
+        .setTimestamp();
+      await sendLog(errEmbed);
 
-        await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
-      }
+      // في حال وجود مشكلة في الإرسال يتم تمييزها برقم 2 حتى لا يعلق البوت في حلقة تكرار لانهائية
+      await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
     }
   } catch (err) {
     console.error("[BOT] Error in checkNewOrders:", err.message);
@@ -453,16 +451,22 @@ async function checkNewOrders() {
 //   Bot Ready Event
 // ==========================================
 
+let isWatching = false;
+
 client.once("ready", async () => {
   console.log(`[BOT] Logged in as ${client.user.tag}`);
-  console.log(`[BOT] Watching orders table every ${POLL_INTERVAL / 1000}s...`);
 
   client.user.setActivity(`${SERVER_DISPLAY_NAME} | Orders`, {
     type: ActivityType.Watching,
   });
 
-  await checkNewOrders();
-  setInterval(checkNewOrders, POLL_INTERVAL);
+  // التأكد من أن التايمر يتم تشغيله مرة واحدة فقط لتجنب الإرسال المزدوج عند الريستارت
+  if (!isWatching) {
+    isWatching = true;
+    console.log(`[BOT] Watching orders table every ${POLL_INTERVAL / 1000}s...`);
+    await checkNewOrders();
+    setInterval(checkNewOrders, POLL_INTERVAL);
+  }
 });
 
 // ==========================================
