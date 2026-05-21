@@ -106,7 +106,7 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//   Build Professional Discord Embed (تم تصليح الـ Embed هنا بالملي)
+//   Build Professional Discord Embed 
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -132,7 +132,6 @@ function buildOrderEmbed(order, state = "new") {
     descPrefix = "A new order has been placed successfully on";
   }
 
-  // بناء حقول مفرودة طولياً (inline: false) لمنع لخبطة الصناديق وضمان ظهور الـ Order ID
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(embedTitle)
@@ -173,7 +172,6 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // تعديل هام جداً: تحويل من setThumbnail إلى setImage لكي تظهر الصورة عريضة وكبيرة بالأسفل
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   }
@@ -274,7 +272,7 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
 }
 
 // ==========================================
-//   Button Interaction Handler
+//   Button Interaction Handler (تم تصليح خطأ orderId هنا)
 // ==========================================
 
 client.on("interactionCreate", async (interaction) => {
@@ -314,6 +312,7 @@ client.on("interactionCreate", async (interaction) => {
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
+    // تم تصليح السطر ده هنا واستبدال orderId بـ orderUniqueId المِتْعرّفة فوق
     await interaction.reply({
       content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || orderUniqueId}\``,
       ephemeral: false,
