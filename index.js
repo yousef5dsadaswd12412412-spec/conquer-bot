@@ -32,7 +32,7 @@ for (const key of REQUIRED_ENV) {
 }
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "10000", 10);
-const SERVER_DISPLAY_NAME = process.env.SERVER_NAME || "Travil-Conquer Recharge";
+const SERVER_DISPLAY_NAME = process.env.SERVER_NAME || "Conquer Online";
 
 // ==========================================
 //   Discord Client Setup
@@ -99,54 +99,67 @@ async function ensureTable() {
 // ==========================================
 
 function parseColor(colorStr) {
-  if (!colorStr) return 0x00ffcc; 
+  if (!colorStr) return 0xf5a623;
   const hex = colorStr.replace("#", "").trim();
   const parsed = parseInt(hex, 16);
-  return isNaN(parsed) ? 0x00ffcc : parsed;
+  return isNaN(parsed) ? 0xf5a623 : parsed;
 }
 
 // ==========================================
-//   Build Professional Discord Embed 
+//   Build Professional Discord Embed (تم تصليح الـ Embed هنا بالملي)
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
+  const timestamp = order.created_at ? new Date(order.created_at) : new Date();
   const serverName = order.server_name || SERVER_DISPLAY_NAME;
 
-  let color, embedTitle;
+  let color, embedTitle, descPrefix;
   if (state === "confirmed") {
     color = 0x2ecc71;
     embedTitle = "✅  Order Confirmed";
+    descPrefix = "Order has been **confirmed** on";
   } else if (state === "rejected") {
     color = 0xe74c3c;
     embedTitle = "🚫  Order Rejected";
+    descPrefix = "Order has been **rejected** on";
+  } else if (state === "banned") {
+    color = 0x9b59b6;
+    embedTitle = "🔨  Account Banned";
+    descPrefix = "Account has been **banned** on";
   } else {
     color = parseColor(order.embed_color);
-    embedTitle = `🗄️  ${serverName}`;
+    embedTitle = "💎  New Order Received";
+    descPrefix = "A new order has been placed successfully on";
   }
 
-  // تم تظبيط الـ الرموز لضمان ظهور الصناديق كاملة بدون أي مشاكل أو اختفاء
+  // بناء حقول مفرودة طولياً (inline: false) لمنع لخبطة الصناديق وضمان ظهور الـ Order ID
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(embedTitle)
-    .setDescription("```\nNew recharge request received.\nWaiting for admin review.\n```")
+    .setDescription(`${descPrefix} **${serverName}**.`)
     .addFields(
       {
-        name: "👤 Player",
+        name: "👤  Player",
         value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
         inline: false,
       },
       {
-        name: "#️⃣ UID",
+        name: "🖥️  Server",
+        value: `\`\`\`${serverName}\`\`\``,
+        inline: false,
+      },
+      {
+        name: "🔑  UID",
         value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
         inline: false,
       },
       {
-        name: "🔴 Package",
+        name: "📦  Package / Title",
         value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
         inline: false,
       },
       {
-        name: "📄 Order ID",
+        name: "🆔  Order ID",
         value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
         inline: false,
       }
@@ -154,21 +167,26 @@ function buildOrderEmbed(order, state = "new") {
 
   if (order.description) {
     embed.addFields({
-      name: "📝 Description",
+      name: "📝  Description",
       value: `\`\`\`${order.description}\`\`\``.slice(0, 1024),
       inline: false,
     });
   }
 
+  // تعديل هام جداً: تحويل من setThumbnail إلى setImage لكي تظهر الصورة عريضة وكبيرة بالأسفل
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   }
+
+  embed
+    .setFooter({ text: `${SERVER_DISPLAY_NAME} • Order System` })
+    .setTimestamp(timestamp);
 
   return embed;
 }
 
 // ==========================================
-//   Build 2-Button Row (Confirm / Reject)
+//   Build 3-Button Row
 // ==========================================
 
 function buildButtonRow(orderUniqueId) {
