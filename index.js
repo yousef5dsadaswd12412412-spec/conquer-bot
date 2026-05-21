@@ -39,7 +39,11 @@ const SERVER_DISPLAY_NAME = process.env.SERVER_NAME || "Conquer Online";
 // ==========================================
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // مهم جداً عشان البوت يلقط رسالة اللانشر أول ما تنزل
+  ],
 });
 
 // ==========================================
@@ -70,44 +74,29 @@ async function connectDatabase() {
 }
 
 // ==========================================
-//   Ensure `sent` Column Exists in orders
+//   Ensure Table Structure
 // ==========================================
 
 async function ensureTable() {
   await db.query(`
     ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS sent TINYINT(1) NOT NULL DEFAULT 0
-  `).catch(async () => {
-    const [cols] = await db.query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'orders'
-        AND COLUMN_NAME = 'sent'
-    `);
-    if (cols.length === 0) {
-      await db.query(`ALTER TABLE orders ADD COLUMN sent TINYINT(1) NOT NULL DEFAULT 0`);
-      console.log("[DB] Added \`sent\` column to orders table.");
-    }
-  });
-
-  await db.query(`ALTER TABLE orders ADD INDEX idx_sent (sent)`).catch(() => {});
+  `).catch(() => {});
   console.log("[DB] orders table verified.");
 }
 
 // ==========================================
-//   الهيكل الإجباري للطلب (نفس شكل صورة image_a9266d.png بالظبط)
+//   دالة تحويل الطلب لتصميم المربعات النظيف الموحد
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
   const timestamp = order.created_at ? new Date(order.created_at) : new Date();
   
-  // تحديد اللون: أخضر للجديد والمقبول، أحمر للمرفوض
-  let color = 0x2ecc71; // الأخضر الافتراضي المريح للعين والظاهر بالصورة المثالية
+  let color = 0x2ecc71; // أخضر افتراضي للطلب الجديد والمقبول
   if (state === "rejected") {
     color = 0xe74c3c; // أحمر عند الرفض
   }
 
-  // المربع النصي الرمادي العلوي حسب حالة الطلب
   let statusBoxText;
   if (state === "confirmed") {
     statusBoxText = "```\nOrder status updated.\nProcessed and confirmed successfully.\n```";
@@ -117,10 +106,9 @@ function buildOrderEmbed(order, state = "new") {
     statusBoxText = "```\nNew recharge request received.\nWaiting for admin review.\n```";
   }
 
-  // بناء الإيمبد وإجبار الخانات تطلع على شكل مربعات سفلية مصفوفة عمودياً
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle("🗺️ Travil-Conquer Recharge")
+    .setTitle("🚨 Travil-Conquer Recharge")
     .setDescription(statusBoxText)
     .addFields(
       {
@@ -145,7 +133,6 @@ function buildOrderEmbed(order, state = "new") {
       }
     );
 
-  // لو الطلب اتقبل أو اترفض بيظهر اسم الإداري تحت الخانات مباشرة
   if (state !== "new" && order._adminId) {
     embed.addFields({
       name: "🛡️ Handled By",
@@ -154,22 +141,16 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // الصورة الكبيرة الثابتة بالأسفل مباشرة قبل الأزرار
+  // الحفاظ على الصورة الكبيرة الأساسية بتاعة اللانشر زي ما هي بدون تخريب
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
     embed.setImage(order.image_url);
   } else {
-    // لو اللانشر مش باعت صورة، البوت بيثبت الصورة الافتراضية الأنيقة للفورمات
     embed.setImage("https://i.imgur.com/uVpZ8f7.png"); 
   }
 
   embed.setTimestamp(timestamp);
-
   return embed;
 }
-
-// ==========================================
-//   Build Action Buttons
-// ==========================================
 
 function buildButtonRow(orderUniqueId) {
   const confirmBtn = new ButtonBuilder()
@@ -188,42 +169,46 @@ function buildButtonRow(orderUniqueId) {
 }
 
 // ==========================================
-//   Send Log to Log Channel
+//   نظام مراقبة الشات والتقاط رسائل اللانشر
 // ==========================================
 
-async function sendLog(logEmbed) {
-  const logChannelId = process.env.LOG_CHANNEL_ID;
-  if (!logChannelId) return;
-  try {
-    const logChannel = await client.channels.fetch(logChannelId);
-    if (logChannel && logChannel.isTextBased()) {
-      await logChannel.send({ embeds: [logEmbed] });
-    }
-  } catch (err) {
-    console.error("[LOG] Failed to send log:", err.message);
-  }
-}
+client.on("messageCreate", async (message) => {
+  // فحص لو الرسالة جاية في الروم المخصصة للأوردرات ومن ويب هوك أو بوت اللانشر
+  if (message.channel.id !== process.env.DISCORD_CHANNEL) return;
+  if (message.author.id === client.user.id) return; // تجاهل رسائل البوت نفسه
 
-function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
-  const now = new Date();
-  return new EmbedBuilder()
-    .setColor(color)
-    .setTitle(`${icon}  ${action}`)
-    .addFields(
-      { name: "👤 Player", value: `\`${order.player_name || "Unknown"}\``, inline: true },
-      { name: "📌 UID", value: `\`${order.uid || "—"}\``, inline: true },
-      { name: "🔴 Package", value: order.title ? `\`${order.title}\`` : "\`—\`", inline: false },
-      { name: "📋 Order ID", value: `\`${order.order_id || order.id}\``, inline: true },
-      { name: "🛡️ Admin", value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "\`System\`", inline: true },
-      {
-        name: "📡 Source Message",
-        value: messageUrl ? `**[🔗 Jump to Order Message](${messageUrl})**` : "\`—\`",
-        inline: false,
+  try {
+    // الانتظار ثانيتين للتأكد من تسجيل الطلب في القاعدة
+    setTimeout(async () => {
+      // سحب آخر طلب لم يتم إرساله وزرعه بالزراير بعد
+      const [rows] = await db.query(
+        "SELECT * FROM orders WHERE sent = 0 ORDER BY created_at DESC LIMIT 1"
+      );
+
+      if (rows.length > 0) {
+        const order = rows[0];
+        const dbId = String(order.id);
+
+        // حجز الطلب في القاعدة
+        await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
+
+        // مسح الرسالة القديمة (الغير منسقة) اللي نزلت من اللانشر منعاً للتكرار
+        if (message.deletable) {
+          await message.delete().catch(() => {});
+        }
+
+        // إرسال التصميم الاحترافي المتناسق مع الزراير فوراً مكانها
+        const embed = buildOrderEmbed(order, "new");
+        const row = buildButtonRow(dbId);
+
+        await message.channel.send({ embeds: [embed], components: [row] });
+        console.log(`[BOT] Captured launcher order #${order.order_id || dbId} and replaced layout successfully.`);
       }
-    )
-    .setFooter({ text: `${SERVER_DISPLAY_NAME} • Log System` })
-    .setTimestamp(now);
-}
+    }, 2000);
+  } catch (err) {
+    console.error("[BOT] Error in message capturing loop:", err.message);
+  }
+});
 
 // ==========================================
 //   Button Interaction Handler
@@ -273,116 +258,22 @@ client.on("interactionCreate", async (interaction) => {
       ephemeral: false,
     });
 
-    const logEmbed = buildLogEmbed({
-      action,
-      order: updatedOrderData,
-      admin: user,
-      color: logColor,
-      icon: logIcon,
-      messageUrl: message.url,
-    });
-    await sendLog(logEmbed);
-
-    console.log(`[BOT] Order #${orderUniqueId} updated to [${newStatus}] by ${user.tag}`);
+    console.log(`[BOT] Order #${orderUniqueId} completed by ${user.tag}`);
   } catch (err) {
-    console.error(`[BOT] Error handling buttons for order #${orderUniqueId}:`, err.message);
-    try {
-      await interaction.reply({ content: "❌ An error occurred while updating the order status.", ephemeral: true });
-    } catch (_) {}
+    console.error(`[BOT] Error updating button status:`, err.message);
   }
 });
-
-// ==========================================
-//   Fetch & Process New Orders (Anti-Duplicate Loop)
-// ==========================================
-
-let isProcessing = false;
-
-async function checkNewOrders() {
-  if (isProcessing) return;
-  isProcessing = true;
-
-  try {
-    const channel = await client.channels.fetch(process.env.DISCORD_CHANNEL);
-
-    if (!channel || !channel.isTextBased()) {
-      console.error("[BOT] Configured channel is invalid or not text-based.");
-      isProcessing = false;
-      return;
-    }
-
-    // سحب سطر واحد فقط بكل لفة لحماية السيستم من التكرار المزدوج
-    const [rows] = await db.query(
-      "SELECT * FROM orders WHERE sent = 0 ORDER BY created_at ASC LIMIT 1"
-    );
-
-    if (rows.length === 0) {
-      isProcessing = false;
-      return;
-    }
-
-    const order = rows[0];
-    const dbId = String(order.id);
-
-    // حجز السطر فوراً داخل الداتابيز قبل بدء عملية الإرسال للديسكورد لضمان عدم سحبه مرتين
-    await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
-
-    try {
-      // إجبار البيانات المأخوذة من الداتابيز تترتب في التصميم الجديد
-      const embed = buildOrderEmbed(order, "new");
-      const row = buildButtonRow(dbId);
-
-      await channel.send({ embeds: [embed], components: [row] });
-
-      console.log(`[BOT] Order #${order.order_id || dbId} successfully formatted and sent.`);
-    } catch (orderErr) {
-      console.error(`[BOT] Failed to send message for order #${order.id}:`, orderErr.message);
-      await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
-    }
-  } catch (err) {
-    console.error("[BOT] Error inside checkNewOrders loop:", err.message);
-  } finally {
-    isProcessing = false;
-  }
-}
 
 // ==========================================
 //   Bot Ready Event
 // ==========================================
 
-let isWatching = false;
-
 client.once("ready", async () => {
   console.log(`[BOT] Logged in as ${client.user.tag}`);
-
-  client.user.setActivity(`${SERVER_DISPLAY_NAME} | Orders`, {
+  client.user.setActivity(`${SERVER_DISPLAY_NAME} | Live Orders`, {
     type: ActivityType.Watching,
   });
-
-  // تشغيل التايمر الآمن لعدم تداخل المهام البرمجية
-  if (!isWatching) {
-    isWatching = true;
-    console.log(`[BOT] Securely scanning database every ${POLL_INTERVAL / 1000}s...`);
-    await checkNewOrders();
-    setInterval(checkNewOrders, POLL_INTERVAL);
-  }
-});
-
-// ==========================================
-//   Graceful Shutdown
-// ==========================================
-
-async function shutdown(signal) {
-  console.log(`\n[BOT] ${signal} trigger. Disconnecting...`);
-  client.destroy();
-  if (db) await db.end();
-  process.exit(0);
-}
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("unhandledRejection", (reason) => {
-  console.error("[ERROR] Unhandled Rejection:", reason);
+  console.log("[BOT] System online. Waiting for launcher messages to format...");
 });
 
 // ==========================================
@@ -390,10 +281,6 @@ process.on("unhandledRejection", (reason) => {
 // ==========================================
 
 (async () => {
-  console.log("========================================");
-  console.log("   Conquer Online — Fixed Layout Bot    ");
-  console.log("========================================");
-
   await connectDatabase();
   await ensureTable();
   await client.login(process.env.DISCORD_TOKEN);
