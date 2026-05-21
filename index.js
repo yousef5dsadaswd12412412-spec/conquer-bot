@@ -114,28 +114,25 @@ function buildOrderEmbed(order, state = "new") {
   const serverName = order.server_name || SERVER_DISPLAY_NAME;
 
   let color, embedTitle, descPrefix;
+  
   if (state === "confirmed") {
-    color = 0x2ecc71;
+    color = 0x2ecc71; // أخضر
     embedTitle = "✅  Order Confirmed";
     descPrefix = "Order has been **confirmed** on";
   } else if (state === "rejected") {
-    color = 0xe74c3c;
+    color = 0xe74c3c; // أحمر
     embedTitle = "🚫  Order Rejected";
     descPrefix = "Order has been **rejected** on";
   } else if (state === "banned") {
-    color = 0x9b59b6;
+    color = 0x9b59b6; // بنفسجي
     embedTitle = "🔨  Account Banned";
     descPrefix = "Account has been **banned** on";
   } else {
+    // التعديل هنا: خليناه ياخد اللون الذهبي/الأصفر الافتراضي المتناسق للأوردر الجديد
     color = parseColor(order.embed_color);
-    embedTitle = "<a:1388165196979372183:1506824164370022501>  New Order Received";
+    embedTitle = "📦  New Order Received"; 
     descPrefix = "A new order has been placed successfully on";
   }
-
-  let statusText = "⏳  Pending";
-  if (state === "confirmed" || order.status === "confirmed" || order.status === "completed") statusText = "✅  Confirmed";
-  else if (state === "rejected" || order.status === "rejected") statusText = "🚫  Rejected";
-  else if (state === "banned"   || order.status === "banned")   statusText = "🔨  Banned";
 
   const embed = new EmbedBuilder()
     .setColor(color)
@@ -143,31 +140,42 @@ function buildOrderEmbed(order, state = "new") {
     .setDescription(`${descPrefix} **${serverName}**.`)
     .addFields(
       {
-        name: " <a:ss:1506824164370022501>  Player",
-        value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
+        name: "👤  Player",
+        value: order.player_name ? `\`${order.player_name}\`` : "`Unknown`",
         inline: true,
       },
       {
-        name: " <:45:1506991248026767451>  Server",
-        value: `\`\`\`${SERVER_DISPLAY_NAME}\`\`\``,
+        name: "🔑  UID",
+        value: order.uid ? `\`${order.uid}\`` : "`—`",
         inline: true,
       },
       {
-        name: " <:32:1506991254506967060>  UID",
-        value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
+        name: "🖥️  Server",
+        value: `\`${serverName}\``,
         inline: true,
       },
       {
-        name: " <:99:1506991252699086909>  Package / Title",
-        value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
-        inline: false,
+        name: "📦  Package / Title",
+        value: order.title ? `\`${order.title}\`` : "`—`",
+        inline: true,
+      },
+      {
+        name: "🆔  Order ID",
+        value: `\`${order.order_id || order.id}\``,
+        inline: true,
+      },
+      {
+        name: "🛡️  Admin",
+        value: "`System`", // دايماً بيبدأ تبع النظام لحد ما المشرف يقبله
+        inline: true,
       }
     );
 
+  // إضافة حقل الوصف فقط لو كان موجود في داتا الأوردر الجديد
   if (order.description) {
     embed.addFields({
       name: "📝  Description",
-      value: `\`\`\`${order.description.slice(0, 1018)}\`\`\``,
+      value: order.description ? `> ${order.description}`.slice(0, 512) : "> —",
       inline: false,
     });
   }
@@ -297,29 +305,26 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   try {
-    console.log(`[BOT] Button clicked — customId: ${customId} | orderUniqueId: ${orderUniqueId}`);
-
-    let [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
-
-    // Fallback: try by order_id if not found by numeric id
+    const [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
     if (rows.length === 0) {
-      console.log(`[BOT] Not found by id, trying order_id...`);
-      [rows] = await db.query("SELECT * FROM orders WHERE order_id = ?", [orderUniqueId]);
-    }
-
-    console.log(`[BOT] Query result: ${rows.length} row(s) found`);
-
-    if (rows.length === 0) {
-      await interaction.reply({ content: "⚠️ Order not found.", flags: 64 });
+      await interaction.reply({ content: "⚠️ Order not found.", ephemeral: true });
       return;
     }
 
     const order = rows[0];
 
-    // Update using the actual DB primary key
     await db.query("UPDATE orders SET status = ? WHERE id = ?", [newStatus, order.id]);
 
+    // هنا هيمسح الزراير ويحدث الإيمبد لشكل القبول الاحترافي الجديد
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
+    
+    // تعديل بسيط عشان يظهر اسم الأدمن اللي وافق في حقل الـ Admin عند التحديث
+    updatedEmbed.spliceFields(5, 1, {
+      name: "🛡️  Admin",
+      value: `<@${user.id}>`,
+      inline: true
+    });
+
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
     await interaction.reply({
@@ -400,13 +405,41 @@ async function checkNewOrders() {
 
     for (const order of rows) {
       try {
-        // Mark as seen — the launcher already sends the Discord notification
+        const dbId = String(order.id);
+
+        const embed = buildOrderEmbed(order);
+        const row = buildButtonRow(dbId);
+
+        await channel.send({ embeds: [embed], components: [row] });
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
+
         console.log(
-          `[BOT] Order #${order.order_id || order.id} — Player: ${order.player_name} — marked as seen (launcher handles notification).`
+          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — "${order.title}" → Sent & marked.`
         );
       } catch (orderErr) {
-        console.error(`[BOT] Error marking order #${order.id}:`, orderErr.message);
+        const errDetail = orderErr.rawError
+          ? JSON.stringify(orderErr.rawError)
+          : orderErr.errors
+          ? JSON.stringify(orderErr.errors)
+          : orderErr.message;
+
+        console.error(`[BOT] Full error for order #${order.id}:`, errDetail);
+
+        // Log send error to log channel
+        const errEmbed = new EmbedBuilder()
+          .setColor(0xff0000)
+          .setTitle("🚨  Send Error")
+          .addFields(
+            { name: "❌  Error",     value: `\`\`\`${errDetail.slice(0, 900)}\`\`\``, inline: false },
+            { name: "🆔  Order ID", value: `\`${String(order.order_id || order.id).slice(0, 100)}\``, inline: true },
+            { name: "👤  Player",   value: `\`${order.player_name || "—"}\``,   inline: true },
+            { name: "🖥️  Server",  value: `\`${order.server_name || "—"}\``,   inline: true }
+          )
+          .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
+          .setTimestamp();
+        await sendLog(errEmbed);
+
+        await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
       }
     }
   } catch (err) {
@@ -455,7 +488,7 @@ process.on("unhandledRejection", (reason) => {
 
 (async () => {
   console.log("========================================");
-  console.log("   Conquer Online — Discord Order Bot  ");
+  console.log("  Conquer Online — Discord Order Bot  ");
   console.log("========================================");
 
   await connectDatabase();
