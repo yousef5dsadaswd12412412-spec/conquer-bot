@@ -95,97 +95,74 @@ async function ensureTable() {
 }
 
 // ==========================================
-//   Parse Embed Color
-// ==========================================
-
-function parseColor(colorStr) {
-  if (!colorStr) return 0xf5a623;
-  const hex = colorStr.replace("#", "").trim();
-  const parsed = parseInt(hex, 16);
-  return isNaN(parsed) ? 0xf5a623 : parsed;
-}
-
-// ==========================================
-//   Build Professional Discord Embed
+//   الهيكل الإجباري للطلب (نفس شكل صورة image_a9266d.png بالظبط)
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
   const timestamp = order.created_at ? new Date(order.created_at) : new Date();
-  const serverName = order.server_name || SERVER_DISPLAY_NAME;
-
-  let color, embedTitle, descPrefix;
   
-  if (state === "confirmed") {
-    color = 0x2ecc71; // أخضر عند القبول
-    embedTitle = "✅  Order Confirmed";
-    descPrefix = "Order has been **confirmed** on";
-  } else if (state === "rejected") {
+  // تحديد اللون: أخضر للجديد والمقبول، أحمر للمرفوض
+  let color = 0x2ecc71; // الأخضر الافتراضي المريح للعين والظاهر بالصورة المثالية
+  if (state === "rejected") {
     color = 0xe74c3c; // أحمر عند الرفض
-    embedTitle = "🚫  Order Rejected";
-    descPrefix = "Order has been **rejected** on";
-  } else if (state === "banned") {
-    color = 0x9b59b6; // بنفسجي
-    embedTitle = "🔨  Account Banned";
-    descPrefix = "Account has been **banned** on";
-  } else {
-    color = parseColor(order.embed_color); // برتقالي / أصفر مائل للذهبي للطلب الجديد
-    embedTitle = "📦  New Order Received"; 
-    descPrefix = "A new order has been placed successfully on";
   }
 
+  // المربع النصي الرمادي العلوي حسب حالة الطلب
+  let statusBoxText;
+  if (state === "confirmed") {
+    statusBoxText = "```\nOrder status updated.\nProcessed and confirmed successfully.\n```";
+  } else if (state === "rejected") {
+    statusBoxText = "```\nOrder status updated.\nOrder rejected by admin.\n```";
+  } else {
+    statusBoxText = "```\nNew recharge request received.\nWaiting for admin review.\n```";
+  }
+
+  // بناء الإيمبد وإجبار الخانات تطلع على شكل مربعات سفلية مصفوفة عمودياً
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(embedTitle)
-    .setDescription(`${descPrefix} **${serverName}**.`)
+    .setTitle("🗺️ Travil-Conquer Recharge")
+    .setDescription(statusBoxText)
     .addFields(
       {
-        name: "👤  Player",
-        value: order.player_name ? `\`${order.player_name}\`` : "\`Unknown\`",
+        name: "👤 Player",
+        value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
         inline: true,
       },
       {
-        name: "🔑  UID",
-        value: order.uid ? `\`${order.uid}\`` : "\`—\`",
+        name: "📌 UID",
+        value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
         inline: true,
       },
       {
-        name: "🖥️  Server",
-        value: `\`${serverName}\``,
-        inline: true,
+        name: "🔴 Package",
+        value: order.title ? `\`\`\`${order.title}\`\`\`` : "```—```",
+        inline: false,
       },
       {
-        name: "📦  Package / Title",
-        value: order.title ? `\`${order.title}\`` : "\`—\`",
-        inline: true,
-      },
-      {
-        name: "🆔  Order ID",
-        value: `\`${order.order_id || order.id}\``,
-        inline: true,
-      },
-      {
-        name: "🛡️  Admin",
-        value: "\`System\`", 
-        inline: true,
+        name: "📋 Order ID",
+        value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
+        inline: false,
       }
     );
 
-  if (order.description) {
+  // لو الطلب اتقبل أو اترفض بيظهر اسم الإداري تحت الخانات مباشرة
+  if (state !== "new" && order._adminId) {
     embed.addFields({
-      name: "📝  Description",
-      value: `${order.description}`.slice(0, 512),
+      name: "🛡️ Handled By",
+      value: `<@${order._adminId}>`,
       inline: false,
     });
   }
 
-  // لو الـ Database باعتة رابط صورة لوجو السيرفر، بيظهر كـ Thumbnail صغير على اليمين فوق وبشكل شيك
+  // الصورة الكبيرة الثابتة بالأسفل مباشرة قبل الأزرار
   if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
-    embed.setThumbnail(order.image_url);
+    embed.setImage(order.image_url);
+  } else {
+    // لو اللانشر مش باعت صورة، البوت بيثبت الصورة الافتراضية الأنيقة للفورمات
+    embed.setImage("https://i.imgur.com/uVpZ8f7.png"); 
   }
 
-  embed
-    .setFooter({ text: `${SERVER_DISPLAY_NAME} • Order System` })
-    .setTimestamp(timestamp);
+  embed.setTimestamp(timestamp);
 
   return embed;
 }
@@ -198,11 +175,13 @@ function buildButtonRow(orderUniqueId) {
   const confirmBtn = new ButtonBuilder()
     .setCustomId(`confirm_${orderUniqueId}`)
     .setLabel("Confirm")
+    .setEmoji("✅")
     .setStyle(ButtonStyle.Success);
 
   const rejectBtn = new ButtonBuilder()
     .setCustomId(`reject_${orderUniqueId}`)
     .setLabel("Reject")
+    .setEmoji("❌")
     .setStyle(ButtonStyle.Danger);
 
   return new ActionRowBuilder().addComponents(confirmBtn, rejectBtn);
@@ -231,46 +210,14 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
     .setColor(color)
     .setTitle(`${icon}  ${action}`)
     .addFields(
+      { name: "👤 Player", value: `\`${order.player_name || "Unknown"}\``, inline: true },
+      { name: "📌 UID", value: `\`${order.uid || "—"}\``, inline: true },
+      { name: "🔴 Package", value: order.title ? `\`${order.title}\`` : "\`—\`", inline: false },
+      { name: "📋 Order ID", value: `\`${order.order_id || order.id}\``, inline: true },
+      { name: "🛡️ Admin", value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "\`System\`", inline: true },
       {
-        name: "👤  Player",
-        value: `\`${order.player_name || "Unknown"}\``,
-        inline: true,
-      },
-      {
-        name: "🔑  UID",
-        value: `\`${order.uid || "—"}\``,
-        inline: true,
-      },
-      {
-        name: "🖥️  Server",
-        value: `\`${order.server_name || SERVER_DISPLAY_NAME}\``,
-        inline: true,
-      },
-      {
-        name: "📦  Package",
-        value: order.title ? `\`${order.title}\`` : "\`—\`",
-        inline: true,
-      },
-      {
-        name: "🆔  Order ID",
-        value: `\`${order.order_id || order.id}\``,
-        inline: true,
-      },
-      {
-        name: "🛡️  Admin",
-        value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "\`System\`",
-        inline: true,
-      },
-      {
-        name: "📝  Description",
-        value: order.description ? `> ${order.description}`.slice(0, 512) : "> —",
-        inline: false,
-      },
-      {
-        name: "📡  Received From",
-        value: messageUrl
-          ? `**Channel:** <#${order._channelId || "—"}>  \`${order._channelName || "—"}\`\n**Server:** \`${order._guildName || "—"}\`\n**[🔗 Jump to Message](${messageUrl})**`
-          : "\`—\`",
+        name: "📡 Source Message",
+        value: messageUrl ? `**[🔗 Jump to Order Message](${messageUrl})**` : "\`—\`",
         inline: false,
       }
     )
@@ -297,18 +244,18 @@ client.on("interactionCreate", async (interaction) => {
 
   if (confirmMatch) {
     action = "Order Confirmed"; newStatus = "confirmed";
-    replyText = `✅ Order confirmed by <@${user.id}>`;
+    replyText = `✅ Order has been confirmed successfully by <@${user.id}>`;
     logColor = 0x2ecc71; logIcon = "✅";
   } else {
     action = "Order Rejected"; newStatus = "rejected";
-    replyText = `🚫 Order rejected by <@${user.id}>`;
-    logColor = 0xe74c3c; logIcon = "🚫";
+    replyText = `❌ Order has been rejected by <@${user.id}>`;
+    logColor = 0xe74c3c; logIcon = "❌";
   }
 
   try {
     const [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
     if (rows.length === 0) {
-      await interaction.reply({ content: "⚠️ Order not found.", ephemeral: true });
+      await interaction.reply({ content: "⚠️ Order not found in database.", ephemeral: true });
       return;
     }
 
@@ -316,32 +263,19 @@ client.on("interactionCreate", async (interaction) => {
 
     await db.query("UPDATE orders SET status = ? WHERE id = ?", [newStatus, order.id]);
 
-    const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
-    
-    // تعديل خانة الأدمن تلقائياً لتظهر منشن الشخص اللي ضغط الزرار
-    updatedEmbed.spliceFields(5, 1, {
-      name: "🛡️  Admin",
-      value: `<@${user.id}>`,
-      inline: true
-    });
+    const updatedOrderData = { ...order, status: newStatus, _adminId: user.id };
+    const updatedEmbed = buildOrderEmbed(updatedOrderData, newStatus);
 
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
     await interaction.reply({
-      content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || order.id}\``,
+      content: `${replyText} (Player: \`${order.player_name}\` | ID: \`${order.order_id || order.id}\`)`,
       ephemeral: false,
     });
 
-    // إرسال اللوق التفصيلي لقناة اللوجات الإدارية
-    const enrichedOrder = {
-      ...order,
-      _channelId:   message.channel?.id   || "—",
-      _channelName: message.channel?.name || "—",
-      _guildName:   message.guild?.name   || "—",
-    };
     const logEmbed = buildLogEmbed({
       action,
-      order: enrichedOrder,
+      order: updatedOrderData,
       admin: user,
       color: logColor,
       icon: logIcon,
@@ -349,31 +283,17 @@ client.on("interactionCreate", async (interaction) => {
     });
     await sendLog(logEmbed);
 
-    console.log(`[BOT] Order #${orderUniqueId} → ${newStatus} by ${user.tag}`);
+    console.log(`[BOT] Order #${orderUniqueId} updated to [${newStatus}] by ${user.tag}`);
   } catch (err) {
-    console.error(`[BOT] Error processing order #${orderUniqueId}:`, err.message);
-
-    const errEmbed = new EmbedBuilder()
-      .setColor(0xff0000)
-      .setTitle("🚨  Bot Error")
-      .addFields(
-        { name: "❌  Error",     value: `\`\`\`${err.message}\`\`\``, inline: false },
-        { name: "🆔  Order ID",  value: `\`${orderUniqueId}\``,        inline: true  },
-        { name: "🛡️  Admin",    value: `<@${user.id}> \`(${user.tag})\``, inline: true },
-        { name: "🎯  Action",    value: `\`${customId}\``,              inline: true  }
-      )
-      .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
-      .setTimestamp();
-    await sendLog(errEmbed);
-
+    console.error(`[BOT] Error handling buttons for order #${orderUniqueId}:`, err.message);
     try {
-      await interaction.reply({ content: "❌ Something went wrong. Check the log channel.", flags: 64 });
+      await interaction.reply({ content: "❌ An error occurred while updating the order status.", ephemeral: true });
     } catch (_) {}
   }
 });
 
 // ==========================================
-//   Fetch & Process New Orders (No Dubbed)
+//   Fetch & Process New Orders (Anti-Duplicate Loop)
 // ==========================================
 
 let isProcessing = false;
@@ -386,12 +306,12 @@ async function checkNewOrders() {
     const channel = await client.channels.fetch(process.env.DISCORD_CHANNEL);
 
     if (!channel || !channel.isTextBased()) {
-      console.error("[BOT] Discord channel not found or is not a text channel.");
+      console.error("[BOT] Configured channel is invalid or not text-based.");
       isProcessing = false;
       return;
     }
 
-    // جلب سطر واحد فقط بكل دورة فحص لحماية البوت من الـ Race Condition والتكرار
+    // سحب سطر واحد فقط بكل لفة لحماية السيستم من التكرار المزدوج
     const [rows] = await db.query(
       "SELECT * FROM orders WHERE sent = 0 ORDER BY created_at ASC LIMIT 1"
     );
@@ -404,44 +324,23 @@ async function checkNewOrders() {
     const order = rows[0];
     const dbId = String(order.id);
 
-    // تحديث الحالة فوراً في قاعدة البيانات قبل إرسال ديسكورد لمنع التكرار نهائياً
+    // حجز السطر فوراً داخل الداتابيز قبل بدء عملية الإرسال للديسكورد لضمان عدم سحبه مرتين
     await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
     try {
-      const embed = buildOrderEmbed(order);
+      // إجبار البيانات المأخوذة من الداتابيز تترتب في التصميم الجديد
+      const embed = buildOrderEmbed(order, "new");
       const row = buildButtonRow(dbId);
 
       await channel.send({ embeds: [embed], components: [row] });
 
-      console.log(
-        `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} → Sent successfully.`
-      );
+      console.log(`[BOT] Order #${order.order_id || dbId} successfully formatted and sent.`);
     } catch (orderErr) {
-      const errDetail = orderErr.rawError
-        ? JSON.stringify(orderErr.rawError)
-        : orderErr.errors
-        ? JSON.stringify(orderErr.errors)
-        : orderErr.message;
-
-      console.error(`[BOT] Error sending order #${order.id}:`, errDetail);
-
-      const errEmbed = new EmbedBuilder()
-        .setColor(0xff0000)
-        .setTitle("🚨  Send Error")
-        .addFields(
-          { name: "❌  Error",     value: `\`\`\`${errDetail.slice(0, 900)}\`\`\``, inline: false },
-          { name: "🆔  Order ID", value: `\`${dbId}\``, inline: true },
-          { name: "👤  Player",   value: `\`${order.player_name || "—"}\``,   inline: true }
-        )
-        .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
-        .setTimestamp();
-      await sendLog(errEmbed);
-
-      // في حال وجود مشكلة في الإرسال يتم تمييزها برقم 2 حتى لا يعلق البوت في حلقة تكرار لانهائية
+      console.error(`[BOT] Failed to send message for order #${order.id}:`, orderErr.message);
       await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
     }
   } catch (err) {
-    console.error("[BOT] Error in checkNewOrders:", err.message);
+    console.error("[BOT] Error inside checkNewOrders loop:", err.message);
   } finally {
     isProcessing = false;
   }
@@ -460,10 +359,10 @@ client.once("ready", async () => {
     type: ActivityType.Watching,
   });
 
-  // التأكد من أن التايمر يتم تشغيله مرة واحدة فقط لتجنب الإرسال المزدوج عند الريستارت
+  // تشغيل التايمر الآمن لعدم تداخل المهام البرمجية
   if (!isWatching) {
     isWatching = true;
-    console.log(`[BOT] Watching orders table every ${POLL_INTERVAL / 1000}s...`);
+    console.log(`[BOT] Securely scanning database every ${POLL_INTERVAL / 1000}s...`);
     await checkNewOrders();
     setInterval(checkNewOrders, POLL_INTERVAL);
   }
@@ -474,7 +373,7 @@ client.once("ready", async () => {
 // ==========================================
 
 async function shutdown(signal) {
-  console.log(`\n[BOT] ${signal} received. Shutting down gracefully...`);
+  console.log(`\n[BOT] ${signal} trigger. Disconnecting...`);
   client.destroy();
   if (db) await db.end();
   process.exit(0);
@@ -483,16 +382,16 @@ async function shutdown(signal) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("unhandledRejection", (reason) => {
-  console.error("[ERROR] Unhandled Promise Rejection:", reason);
+  console.error("[ERROR] Unhandled Rejection:", reason);
 });
 
 // ==========================================
-//   Start Bot
+//   Initialization
 // ==========================================
 
 (async () => {
   console.log("========================================");
-  console.log("  Conquer Online — Discord Order Bot  ");
+  console.log("   Conquer Online — Fixed Layout Bot    ");
   console.log("========================================");
 
   await connectDatabase();
