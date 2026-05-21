@@ -128,7 +128,7 @@ function buildOrderEmbed(order, state = "new") {
     descPrefix = "Account has been **banned** on";
   } else {
     color = parseColor(order.embed_color);
-    embedTitle = "💎  New Order Received";
+    embedTitle = "<a:1388165196979372183:1506824164370022501>  New Order Received";
     descPrefix = "A new order has been placed successfully on";
   }
 
@@ -143,23 +143,23 @@ function buildOrderEmbed(order, state = "new") {
     .setDescription(`${descPrefix} **${serverName}**.`)
     .addFields(
       {
-        name: "👤  Player",
-        value: order.player_name ? `\`${order.player_name}\`` : "`Unknown`",
+        name: " <a:ss:1506824164370022501>  Player",
+        value: order.player_name ? `\`\`\`${order.player_name}\`\`\`` : "```Unknown```",
         inline: true,
       },
       {
-        name: "🖥️  Server",
-        value: `\`${serverName}\``,
+        name: " <:45:1506991248026767451>  Server",
+        value: `\`\`\`${SERVER_DISPLAY_NAME}\`\`\``,
         inline: true,
       },
       {
-        name: "🔑  UID",
-        value: order.uid ? `\`${order.uid}\`` : "`—`",
+        name: " <:32:1506991254506967060>  UID",
+        value: order.uid ? `\`\`\`${order.uid}\`\`\`` : "```—```",
         inline: true,
       },
       {
-        name: "📦  Package / Title",
-        value: order.title ? `${order.title}` : "> *(No title)*",
+        name: " <:99:1506991252699086909>  Package / Title",
+        value: order.title ? `\`\`\`${order.title}\`\`\`` : "```(No title)```",
         inline: false,
       }
     );
@@ -167,7 +167,7 @@ function buildOrderEmbed(order, state = "new") {
   if (order.description) {
     embed.addFields({
       name: "📝  Description",
-      value: `${order.description}`.slice(0, 1024),
+      value: `\`\`\`${order.description.slice(0, 1018)}\`\`\``,
       inline: false,
     });
   }
@@ -297,21 +297,33 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   try {
-    const [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
+    console.log(`[BOT] Button clicked — customId: ${customId} | orderUniqueId: ${orderUniqueId}`);
+
+    let [rows] = await db.query("SELECT * FROM orders WHERE id = ?", [orderUniqueId]);
+
+    // Fallback: try by order_id if not found by numeric id
     if (rows.length === 0) {
-      await interaction.reply({ content: "⚠️ Order not found.", ephemeral: true });
+      console.log(`[BOT] Not found by id, trying order_id...`);
+      [rows] = await db.query("SELECT * FROM orders WHERE order_id = ?", [orderUniqueId]);
+    }
+
+    console.log(`[BOT] Query result: ${rows.length} row(s) found`);
+
+    if (rows.length === 0) {
+      await interaction.reply({ content: "⚠️ Order not found.", flags: 64 });
       return;
     }
 
     const order = rows[0];
 
+    // Update using the actual DB primary key
     await db.query("UPDATE orders SET status = ? WHERE id = ?", [newStatus, order.id]);
 
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
     await interaction.reply({
-      content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || orderId}\``,
+      content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || order.id}\``,
       ephemeral: false,
     });
 
@@ -388,46 +400,13 @@ async function checkNewOrders() {
 
     for (const order of rows) {
       try {
-        // Always use the DB primary key (id) — always present, always unique, no sanitization needed
-        const dbId = String(order.id);
-
-        const embed = buildOrderEmbed(order);
-        const row = buildButtonRow(dbId);
-
-        await channel.send({ embeds: [embed], components: [row] });
+        // Mark as seen — the launcher already sends the Discord notification
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
-
         console.log(
-          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — "${order.title}" → Sent & marked.`
+          `[BOT] Order #${order.order_id || order.id} — Player: ${order.player_name} — marked as seen (launcher handles notification).`
         );
       } catch (orderErr) {
-        // Get full Discord API error details if available
-        const errDetail = orderErr.rawError
-          ? JSON.stringify(orderErr.rawError)
-          : orderErr.errors
-          ? JSON.stringify(orderErr.errors)
-          : orderErr.message;
-
-        console.error(`[BOT] Full error for order #${order.id}:`, errDetail);
-
-        console.error(`[BOT] Error processing order #${order.id}:`, errDetail);
-
-        // Log send error to log channel
-        const errEmbed = new EmbedBuilder()
-          .setColor(0xff0000)
-          .setTitle("🚨  Send Error")
-          .addFields(
-            { name: "❌  Error",    value: `\`\`\`${errDetail.slice(0, 900)}\`\`\``, inline: false },
-            { name: "🆔  Order ID", value: `\`${String(order.order_id || order.id).slice(0, 100)}\``, inline: true },
-            { name: "👤  Player",   value: `\`${order.player_name || "—"}\``,   inline: true },
-            { name: "🖥️  Server",  value: `\`${order.server_name || "—"}\``,   inline: true }
-          )
-          .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
-          .setTimestamp();
-        await sendLog(errEmbed);
-
-        // Mark as sent=2 to avoid infinite retry loop
-        await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
+        console.error(`[BOT] Error marking order #${order.id}:`, orderErr.message);
       }
     }
   } catch (err) {
