@@ -106,7 +106,7 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//    Build Professional Discord Embed
+//    Build Professional Discord Embed (المعدلة لدعم الصور الذكي)
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -169,34 +169,58 @@ function buildOrderEmbed(order, state = "new") {
       }
     );
 
-  if (order.description) {
+  let finalImgUrl = null;
+  let cleanDescription = order.description || "";
+
+  // 1. فحص الحقول العادية المخصصة للصورة أولاً لو موجودة في الداتابيز
+  let rawImgUrl = order.image_url || order.image || order.img;
+  if (rawImgUrl && typeof rawImgUrl === 'string') {
+    finalImgUrl = rawImgUrl.trim();
+  }
+
+  // 2. فحص متقدم واستخراج الرابط من حقل الـ Description لو محشور وسط علامات أو نصوص
+  const urlRegex = /(https?:\/\/[^\s`><"'}]+)/i;
+  const match = cleanDescription.match(urlRegex);
+
+  if (match) {
+    if (!finalImgUrl) {
+      finalImgUrl = match[1].trim();
+    }
+    
+    // تنظيف الوصف: إزالة الرابط وأي أقواس أو علامات مشوهة حواليه مثل < > أو السهم
+    cleanDescription = cleanDescription.replace(/<[^>]*https?:\/\/[^\s>]+[^>]*>/gi, ""); // إزالة الرابط لو داخل وسوم < >
+    cleanDescription = cleanDescription.replace(urlRegex, ""); // إزالة الرابط الصريح
+    cleanDescription = cleanDescription.replace(/📷\s*صورة\s*الإيصال\s*[:：➖—<-]*/g, ""); // تنظيف العناوين النصية الزائدة المتعلقة بالصورة
+    cleanDescription = cleanDescription.trim();
+  }
+
+  // إذا بقِي أي نص في الوصف بعد التنظيف يتم عرضه بشكل مرتب
+  if (cleanDescription && cleanDescription.length > 0) {
     embed.addFields({
       name: "📝  Description",
-      value: `\`\`\`${order.description.slice(0, 1018)}\`\`\``,
+      value: `\`\`\`${cleanDescription.slice(0, 1018)}\`\`\``,
       inline: false,
     });
   }
 
-  // ==========================================
-  // فحص ذكي جداً لتحويل روابط صفحات الرفع لروابط صور مباشرة
-  // ==========================================
-  let rawImgUrl = order.image_url || order.image || order.img;
-  
-  if (rawImgUrl && typeof rawImgUrl === 'string') {
-    let cleanImgUrl = rawImgUrl.trim();
+  // 3. تنظيف رابط الصورة النهائي وتحويل روابط الرفع العادية لروابط ديسكورد المباشرة
+  if (finalImgUrl) {
+    // إزالة أي رموز غريبة علقت بالرابط نتيجة الرفع أو القص
+    finalImgUrl = finalImgUrl.replace(/[><`"'\x00-\x1F\x7F]/g, "").trim();
 
-    // 1. تحويل روابط موقع Imgur العادية لرابط مباشر
-    if (cleanImgUrl.includes("imgur.com/") && !cleanImgUrl.match(/\.(png|jpg|jpeg|gif)$/i)) {
-      cleanImgUrl = cleanImgUrl.replace("imgur.com/", "i.imgur.com/") + ".png";
+    // تحويل روابط موقع Imgur لروابط مباشرة
+    if (finalImgUrl.includes("imgur.com/") && !finalImgUrl.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
+      finalImgUrl = finalImgUrl.replace("imgur.com/", "i.imgur.com/") + ".png";
     }
-    // 2. تحويل روابط موقع top4top العادية لرابط مباشر
-    if (cleanImgUrl.includes("top4top.io/index.php?v=")) {
-      cleanImgUrl = cleanImgUrl.replace("index.php?v=", "uploads/png/top4top_") + ".png";
+    
+    // تحويل روابط موقع top4top لروابط مباشرة
+    if (finalImgUrl.includes("top4top.io/index.php?v=")) {
+      finalImgUrl = finalImgUrl.replace("index.php?v=", "uploads/png/top4top_") + ".png";
     }
 
-    // التأكد التام من أن الرابط يبدأ بـ http/https وأنه ليس فارغاً
-    if (/^https?:\/\//i.test(cleanImgUrl)) {
-      embed.setImage(cleanImgUrl); // وضع الصورة الكبيرة العريضة أسفل الإمبد
+    // تفعيل وعرض الصورة بشكل كامل وعريض أسفل الإمبد
+    if (/^https?:\/\//i.test(finalImgUrl)) {
+      embed.setImage(finalImgUrl);
     }
   }
 
