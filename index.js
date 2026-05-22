@@ -106,60 +106,89 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//    Smart Image URL Extractor (FIX)
+//    شامل لوج للأوردر (DEBUG)
+// ==========================================
+
+function logOrderDebug(order) {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(`[DEBUG] ▶ Processing Order ID: ${order.order_id || order.id}`);
+  console.log(`[DEBUG] ▶ All fields in this order:`);
+
+  for (const [key, val] of Object.entries(order)) {
+    const type = typeof val;
+    let display;
+
+    if (val === null || val === undefined) {
+      display = `NULL`;
+    } else if (val instanceof Date) {
+      display = `[Date] ${val.toISOString()}`;
+    } else if (type === "string") {
+      display = val.length > 200 ? `"${val.slice(0, 200)}..." (${val.length} chars)` : `"${val}"`;
+    } else if (type === "object") {
+      display = `[Object] ${JSON.stringify(val).slice(0, 100)}`;
+    } else {
+      display = String(val);
+    }
+
+    console.log(`[DEBUG]   • ${key.padEnd(25)} = ${display}`);
+  }
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+}
+
+// ==========================================
+//    Smart Image URL Extractor
 // ==========================================
 
 function extractImageUrl(order) {
-  // الحقول المعروفة المحتمل فيها الصورة — مرتبة من الأكثر شيوعاً للأقل
   const knownImageFields = [
-    "image_url",
-    "image",
-    "img",
-    "photo",
-    "receipt",
-    "receipt_url",
-    "receipt_image",
-    "payment_proof",
-    "payment_image",
-    "img_url",
-    "image_path",
-    "file_url",
-    "file",
-    "attachment",
-    "attachment_url",
-    "screenshot",
-    "proof",
-    "proof_url",
+    "image_url", "image", "img", "photo", "receipt", "receipt_url",
+    "receipt_image", "payment_proof", "payment_image", "img_url",
+    "image_path", "file_url", "file", "attachment", "attachment_url",
+    "screenshot", "proof", "proof_url",
   ];
+
+  console.log("[IMG] ▶ Checking known image fields...");
 
   for (const field of knownImageFields) {
     const val = order[field];
-    if (val && typeof val === "string" && val.trim().length > 0) {
-      const trimmed = val.trim();
-      if (/^https?:\/\//i.test(trimmed)) {
-        console.log(`[IMG] Found image URL in field "${field}": ${trimmed}`);
-        return trimmed;
+    if (val !== null && val !== undefined) {
+      console.log(`[IMG]   • "${field}" = ${typeof val === "string" ? `"${val.slice(0, 100)}"` : `[${typeof val}] ${String(val).slice(0, 50)}`}`);
+      if (typeof val === "string" && val.trim().length > 0) {
+        const trimmed = val.trim();
+        if (/^https?:\/\//i.test(trimmed)) {
+          console.log(`[IMG] ✅ Found valid image URL in field "${field}"`);
+          return trimmed;
+        } else {
+          console.log(`[IMG] ⚠️  Field "${field}" has value but NOT a valid URL: "${trimmed.slice(0, 80)}"`);
+        }
       }
     }
   }
 
-  // Fallback: مسح جميع الحقول النصية في الأوردر بحثاً عن رابط صورة
+  console.log("[IMG] ▶ Known fields had no image. Scanning ALL string fields for URLs...");
+
   const imageExtRegex = /https?:\/\/[^\s`><"'{}]+\.(?:jpg|jpeg|png|gif|webp|bmp)(?:\?[^\s`><"'{}]*)?/i;
+  const anyUrlRegex = /https?:\/\/[^\s`><"'{}]+/i;
+
   for (const key of Object.keys(order)) {
-    if (knownImageFields.includes(key)) continue; // مسحناها فوق
-    if (key === "description") continue; // ده بنتعامل معاه لوحده
+    if (knownImageFields.includes(key) || key === "description") continue;
     const val = order[key];
     if (val && typeof val === "string") {
-      const match = val.match(imageExtRegex);
-      if (match) {
-        console.log(`[IMG] Found image URL via scan in field "${key}": ${match[0]}`);
-        return match[0];
+      const matchExt = val.match(imageExtRegex);
+      if (matchExt) {
+        console.log(`[IMG] ✅ Found image URL via extension-scan in field "${key}": ${matchExt[0]}`);
+        return matchExt[0];
+      }
+      const matchAny = val.match(anyUrlRegex);
+      if (matchAny) {
+        console.log(`[IMG] ℹ️  Field "${key}" has a URL (no image ext): ${matchAny[0].slice(0, 100)}`);
       }
     }
   }
 
-  // لو ملقيناش في أي حقل، نطبع كل أسماء الحقول للمساعدة في التشخيص
-  console.log(`[IMG] No image found. Order fields available: ${Object.keys(order).join(", ")}`);
+  console.log("[IMG] ❌ No image URL found in any field.");
+  console.log(`[IMG]    All field names: ${Object.keys(order).join(", ")}`);
   return null;
 }
 
@@ -227,31 +256,34 @@ function buildOrderEmbed(order, state = "new") {
       }
     );
 
-  // ==========================================
-  //  استخراج الصورة — الإصلاح الرئيسي هنا
-  // ==========================================
-
-  // 1. استخدام الدالة الذكية اللي بتفحص كل الحقول
+  // استخراج الصورة مع لوجات شاملة
   let finalImgUrl = extractImageUrl(order);
 
-  // 2. فحص حقل الـ description عشان نستخرج منه رابط لو موجود
+  // فحص الـ description
   let cleanDescription = order.description || "";
   const urlRegex = /(https?:\/\/[^\s`><"'{}]+)/i;
   const descMatch = cleanDescription.match(urlRegex);
 
   if (descMatch) {
+    console.log(`[IMG] ▶ Found URL in description field: ${descMatch[1].slice(0, 100)}`);
     if (!finalImgUrl) {
       finalImgUrl = descMatch[1].trim();
-      console.log(`[IMG] Found image URL in description: ${finalImgUrl}`);
+      console.log(`[IMG] ✅ Using description URL as image: ${finalImgUrl}`);
+    } else {
+      console.log(`[IMG] ℹ️  Already have image from another field, ignoring description URL`);
     }
-    // تنظيف الوصف من الرابط والعناوين الزائدة
     cleanDescription = cleanDescription.replace(/<[^>]*https?:\/\/[^\s>]+[^>]*>/gi, "");
     cleanDescription = cleanDescription.replace(urlRegex, "");
     cleanDescription = cleanDescription.replace(/📷\s*صورة\s*الإيصال\s*[:：➖—<-]*/g, "");
     cleanDescription = cleanDescription.trim();
+  } else {
+    if (cleanDescription.length > 0) {
+      console.log(`[IMG] ▶ Description has text but NO URL: "${cleanDescription.slice(0, 100)}"`);
+    } else {
+      console.log(`[IMG] ▶ Description field is empty.`);
+    }
   }
 
-  // عرض الوصف لو فيه نص بعد التنظيف
   if (cleanDescription && cleanDescription.length > 0) {
     embed.addFields({
       name: "📝  Description",
@@ -260,28 +292,33 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // 3. تنظيف وتحويل رابط الصورة
+  // تطبيق الصورة النهائية
   if (finalImgUrl) {
-    // إزالة أي رموز غريبة
+    const beforeClean = finalImgUrl;
     finalImgUrl = finalImgUrl.replace(/[><`"'\x00-\x1F\x7F]/g, "").trim();
 
-    // تحويل روابط Imgur لروابط مباشرة
+    if (beforeClean !== finalImgUrl) {
+      console.log(`[IMG] ▶ URL cleaned: "${beforeClean.slice(0, 80)}" → "${finalImgUrl.slice(0, 80)}"`);
+    }
+
     if (finalImgUrl.includes("imgur.com/") && !finalImgUrl.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
       finalImgUrl = finalImgUrl.replace("imgur.com/", "i.imgur.com/") + ".png";
+      console.log(`[IMG] ▶ Converted Imgur URL: ${finalImgUrl}`);
     }
 
-    // تحويل روابط top4top لروابط مباشرة
     if (finalImgUrl.includes("top4top.io/index.php?v=")) {
       finalImgUrl = finalImgUrl.replace("index.php?v=", "uploads/png/top4top_") + ".png";
+      console.log(`[IMG] ▶ Converted top4top URL: ${finalImgUrl}`);
     }
 
-    // تفعيل الصورة في الإمبد
     if (/^https?:\/\//i.test(finalImgUrl)) {
-      console.log(`[IMG] Setting embed image: ${finalImgUrl}`);
+      console.log(`[IMG] ✅ Setting embed image → ${finalImgUrl}`);
       embed.setImage(finalImgUrl);
     } else {
-      console.log(`[IMG] URL failed final validation: ${finalImgUrl}`);
+      console.log(`[IMG] ❌ Final URL failed https:// check: "${finalImgUrl}"`);
     }
+  } else {
+    console.log(`[IMG] ❌ No image to set — embed will be sent WITHOUT image.`);
   }
 
   embed
@@ -332,41 +369,13 @@ function buildLogEmbed({ action, order, admin, color, icon, messageUrl }) {
     .setColor(color)
     .setTitle(`${icon}  ${action}`)
     .addFields(
-      {
-        name: "👤  Player",
-        value: `\`${order.player_name || "Unknown"}\``,
-        inline: true,
-      },
-      {
-        name: "🔑  UID",
-        value: `\`${order.uid || "—"}\``,
-        inline: true,
-      },
-      {
-        name: "🖥️  Server",
-        value: `\`${order.server_name || SERVER_DISPLAY_NAME}\``,
-        inline: true,
-      },
-      {
-        name: "📦  Package",
-        value: order.title ? `\`${order.title}\`` : "`—`",
-        inline: true,
-      },
-      {
-        name: "🆔  Order ID",
-        value: `\`${order.order_id || order.id}\``,
-        inline: true,
-      },
-      {
-        name: "🛡️  Admin",
-        value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "`System`",
-        inline: true,
-      },
-      {
-        name: "📝  Description",
-        value: order.description ? `> ${order.description}`.slice(0, 512) : "> —",
-        inline: false,
-      },
+      { name: "👤  Player",   value: `\`${order.player_name || "Unknown"}\``, inline: true },
+      { name: "🔑  UID",      value: `\`${order.uid || "—"}\``,               inline: true },
+      { name: "🖥️  Server",  value: `\`${order.server_name || SERVER_DISPLAY_NAME}\``, inline: true },
+      { name: "📦  Package",  value: order.title ? `\`${order.title}\`` : "`—`", inline: true },
+      { name: "🆔  Order ID", value: `\`${order.order_id || order.id}\``,      inline: true },
+      { name: "🛡️  Admin",   value: admin ? `<@${admin.id}> \`(${admin.tag})\`` : "`System`", inline: true },
+      { name: "📝  Description", value: order.description ? `> ${order.description}`.slice(0, 512) : "> —", inline: false },
       {
         name: "📡  Received From",
         value: messageUrl
@@ -442,12 +451,8 @@ client.on("interactionCreate", async (interaction) => {
       _guildName:   message.guild?.name   || "—",
     };
     const logEmbed = buildLogEmbed({
-      action,
-      order: enrichedOrder,
-      admin: user,
-      color: logColor,
-      icon: logIcon,
-      messageUrl: message.url,
+      action, order: enrichedOrder, admin: user,
+      color: logColor, icon: logIcon, messageUrl: message.url,
     });
     await sendLog(logEmbed);
 
@@ -459,10 +464,10 @@ client.on("interactionCreate", async (interaction) => {
       .setColor(0xff0000)
       .setTitle("🚨  Bot Error")
       .addFields(
-        { name: "❌  Error",     value: `\`\`\`${err.message}\`\`\``, inline: false },
-        { name: "🆔  Order ID",  value: `\`${orderUniqueId}\``,        inline: true  },
-        { name: "🛡️  Admin",    value: `<@${user.id}> \`(${user.tag})\``, inline: true },
-        { name: "🎯  Action",    value: `\`${customId}\``,              inline: true  }
+        { name: "❌  Error",    value: `\`\`\`${err.message}\`\`\``, inline: false },
+        { name: "🆔  Order ID", value: `\`${orderUniqueId}\``,        inline: true  },
+        { name: "🛡️  Admin",   value: `<@${user.id}> \`(${user.tag})\``, inline: true },
+        { name: "🎯  Action",   value: `\`${customId}\``,              inline: true  }
       )
       .setFooter({ text: `${SERVER_DISPLAY_NAME} • Error Log` })
       .setTimestamp();
@@ -508,6 +513,9 @@ async function checkNewOrders() {
       try {
         const dbId = String(order.id);
 
+        // لوج شامل قبل بناء الإمبد
+        logOrderDebug(order);
+
         const embed = buildOrderEmbed(order);
         const row = buildButtonRow(dbId);
 
@@ -515,9 +523,7 @@ async function checkNewOrders() {
 
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
-        console.log(
-          `[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — Sent to Discord & marked as 1.`
-        );
+        console.log(`[BOT] Order #${order.order_id || dbId} — Player: ${order.player_name} — Sent to Discord & marked as 1.`);
       } catch (orderErr) {
         const errDetail = orderErr.rawError
           ? JSON.stringify(orderErr.rawError)
