@@ -177,12 +177,26 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // التعديل الذكي للصور: جلب الرابط وتنظيفه من أي مسافات زيادة مع دعم الحقلين احتياطياً
-  const rawImgUrl = order.image_url || order.image;
+  // ==========================================
+  // فحص ذكي جداً لتحويل روابط صفحات الرفع لروابط صور مباشرة
+  // ==========================================
+  let rawImgUrl = order.image_url || order.image || order.img;
+  
   if (rawImgUrl && typeof rawImgUrl === 'string') {
-    const cleanImgUrl = rawImgUrl.trim();
+    let cleanImgUrl = rawImgUrl.trim();
+
+    // 1. تحويل روابط موقع Imgur العادية لرابط مباشر
+    if (cleanImgUrl.includes("imgur.com/") && !cleanImgUrl.match(/\.(png|jpg|jpeg|gif)$/i)) {
+      cleanImgUrl = cleanImgUrl.replace("imgur.com/", "i.imgur.com/") + ".png";
+    }
+    // 2. تحويل روابط موقع top4top العادية لرابط مباشر
+    if (cleanImgUrl.includes("top4top.io/index.php?v=")) {
+      cleanImgUrl = cleanImgUrl.replace("index.php?v=", "uploads/png/top4top_") + ".png";
+    }
+
+    // التأكد التام من أن الرابط يبدأ بـ http/https وأنه ليس فارغاً
     if (/^https?:\/\//i.test(cleanImgUrl)) {
-      embed.setImage(cleanImgUrl); // عرض الصورة بحجم كامل وعريض أسفل الإمبد
+      embed.setImage(cleanImgUrl); // وضع الصورة الكبيرة العريضة أسفل الإمبد
     }
   }
 
