@@ -153,7 +153,7 @@ function buildOrderEmbed(order, state = "new") {
         inline: false,
       },
       {
-        name: "📞  Phone Number", // إضافة حقل رقم الهاتف للأوردر
+        name: "📞  Phone Number",
         value: order.phone ? `\`\`\`${order.phone}\`\`\`` : "```—```",
         inline: false,
       },
@@ -163,7 +163,7 @@ function buildOrderEmbed(order, state = "new") {
         inline: false,
       },
       {
-        name: "🆔  Order ID", // عرض الـ ID بشكل طولي منسق
+        name: "🆔  Order ID",
         value: order.order_id ? `\`\`\`${order.order_id}\`\`\`` : order.id ? `\`\`\`${order.id}\`\`\`` : "```—```",
         inline: false,
       }
@@ -177,9 +177,13 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // إرجاع كود الصورة الكاملة العريضة (setImage بدلاً من setThumbnail)
-  if (order.image_url && /^https?:\/\//i.test(order.image_url)) {
-    embed.setImage(order.image_url);
+  // التعديل الذكي للصور: جلب الرابط وتنظيفه من أي مسافات زيادة مع دعم الحقلين احتياطياً
+  const rawImgUrl = order.image_url || order.image;
+  if (rawImgUrl && typeof rawImgUrl === 'string') {
+    const cleanImgUrl = rawImgUrl.trim();
+    if (/^https?:\/\//i.test(cleanImgUrl)) {
+      embed.setImage(cleanImgUrl); // عرض الصورة بحجم كامل وعريض أسفل الإمبد
+    }
   }
 
   embed
@@ -328,7 +332,6 @@ client.on("interactionCreate", async (interaction) => {
     const updatedEmbed = buildOrderEmbed({ ...order, status: newStatus }, newStatus);
     await message.edit({ embeds: [updatedEmbed], components: [] });
 
-    // تم إصلاح الغلطة هنا لتعريف المتغير الصحيح ومنع الكراش
     await interaction.reply({
       content: `${replyText} — Player: \`${order.player_name}\` | OrderID: \`${order.order_id || order.id}\``,
       ephemeral: false,
@@ -374,7 +377,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ==========================================
-//    Fetch & Process New Orders (تم إصلاح الإرسال بالكامل هنا)
+//    Fetch & Process New Orders
 // ==========================================
 
 let isProcessing = false;
@@ -407,13 +410,11 @@ async function checkNewOrders() {
       try {
         const dbId = String(order.id);
 
-        // هنا تم إعادة كود بناء الـ Embed والـ Buttons وإرسالهم فوراً ديسكورد
         const embed = buildOrderEmbed(order);
         const row = buildButtonRow(dbId);
 
         await channel.send({ embeds: [embed], components: [row] });
         
-        // تحديث حالة الأوردر في القاعدة بعد الإرسال بنجاح
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
         console.log(
@@ -441,7 +442,6 @@ async function checkNewOrders() {
           .setTimestamp();
         await sendLog(errEmbed);
 
-        // وضع القيمة 2 لمنع حدوث Loop تكرار لا نهائي في حالة حدوث مشكلة في إرسال أوردر معين
         await db.query("UPDATE orders SET sent = 2 WHERE id = ?", [order.id]).catch(() => {});
       }
     }
