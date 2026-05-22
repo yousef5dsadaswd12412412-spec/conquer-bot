@@ -106,7 +106,65 @@ function parseColor(colorStr) {
 }
 
 // ==========================================
-//    Build Professional Discord Embed (المعدلة لدعم الصور الذكي)
+//    Smart Image URL Extractor (FIX)
+// ==========================================
+
+function extractImageUrl(order) {
+  // الحقول المعروفة المحتمل فيها الصورة — مرتبة من الأكثر شيوعاً للأقل
+  const knownImageFields = [
+    "image_url",
+    "image",
+    "img",
+    "photo",
+    "receipt",
+    "receipt_url",
+    "receipt_image",
+    "payment_proof",
+    "payment_image",
+    "img_url",
+    "image_path",
+    "file_url",
+    "file",
+    "attachment",
+    "attachment_url",
+    "screenshot",
+    "proof",
+    "proof_url",
+  ];
+
+  for (const field of knownImageFields) {
+    const val = order[field];
+    if (val && typeof val === "string" && val.trim().length > 0) {
+      const trimmed = val.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        console.log(`[IMG] Found image URL in field "${field}": ${trimmed}`);
+        return trimmed;
+      }
+    }
+  }
+
+  // Fallback: مسح جميع الحقول النصية في الأوردر بحثاً عن رابط صورة
+  const imageExtRegex = /https?:\/\/[^\s`><"'{}]+\.(?:jpg|jpeg|png|gif|webp|bmp)(?:\?[^\s`><"'{}]*)?/i;
+  for (const key of Object.keys(order)) {
+    if (knownImageFields.includes(key)) continue; // مسحناها فوق
+    if (key === "description") continue; // ده بنتعامل معاه لوحده
+    const val = order[key];
+    if (val && typeof val === "string") {
+      const match = val.match(imageExtRegex);
+      if (match) {
+        console.log(`[IMG] Found image URL via scan in field "${key}": ${match[0]}`);
+        return match[0];
+      }
+    }
+  }
+
+  // لو ملقيناش في أي حقل، نطبع كل أسماء الحقول للمساعدة في التشخيص
+  console.log(`[IMG] No image found. Order fields available: ${Object.keys(order).join(", ")}`);
+  return null;
+}
+
+// ==========================================
+//    Build Professional Discord Embed
 // ==========================================
 
 function buildOrderEmbed(order, state = "new") {
@@ -169,32 +227,31 @@ function buildOrderEmbed(order, state = "new") {
       }
     );
 
-  let finalImgUrl = null;
+  // ==========================================
+  //  استخراج الصورة — الإصلاح الرئيسي هنا
+  // ==========================================
+
+  // 1. استخدام الدالة الذكية اللي بتفحص كل الحقول
+  let finalImgUrl = extractImageUrl(order);
+
+  // 2. فحص حقل الـ description عشان نستخرج منه رابط لو موجود
   let cleanDescription = order.description || "";
+  const urlRegex = /(https?:\/\/[^\s`><"'{}]+)/i;
+  const descMatch = cleanDescription.match(urlRegex);
 
-  // 1. فحص الحقول العادية المخصصة للصورة أولاً لو موجودة في الداتابيز
-  let rawImgUrl = order.image_url || order.image || order.img;
-  if (rawImgUrl && typeof rawImgUrl === 'string') {
-    finalImgUrl = rawImgUrl.trim();
-  }
-
-  // 2. فحص متقدم واستخراج الرابط من حقل الـ Description لو محشور وسط علامات أو نصوص
-  const urlRegex = /(https?:\/\/[^\s`><"'}]+)/i;
-  const match = cleanDescription.match(urlRegex);
-
-  if (match) {
+  if (descMatch) {
     if (!finalImgUrl) {
-      finalImgUrl = match[1].trim();
+      finalImgUrl = descMatch[1].trim();
+      console.log(`[IMG] Found image URL in description: ${finalImgUrl}`);
     }
-    
-    // تنظيف الوصف: إزالة الرابط وأي أقواس أو علامات مشوهة حواليه مثل < > أو السهم
-    cleanDescription = cleanDescription.replace(/<[^>]*https?:\/\/[^\s>]+[^>]*>/gi, ""); // إزالة الرابط لو داخل وسوم < >
-    cleanDescription = cleanDescription.replace(urlRegex, ""); // إزالة الرابط الصريح
-    cleanDescription = cleanDescription.replace(/📷\s*صورة\s*الإيصال\s*[:：➖—<-]*/g, ""); // تنظيف العناوين النصية الزائدة المتعلقة بالصورة
+    // تنظيف الوصف من الرابط والعناوين الزائدة
+    cleanDescription = cleanDescription.replace(/<[^>]*https?:\/\/[^\s>]+[^>]*>/gi, "");
+    cleanDescription = cleanDescription.replace(urlRegex, "");
+    cleanDescription = cleanDescription.replace(/📷\s*صورة\s*الإيصال\s*[:：➖—<-]*/g, "");
     cleanDescription = cleanDescription.trim();
   }
 
-  // إذا بقِي أي نص في الوصف بعد التنظيف يتم عرضه بشكل مرتب
+  // عرض الوصف لو فيه نص بعد التنظيف
   if (cleanDescription && cleanDescription.length > 0) {
     embed.addFields({
       name: "📝  Description",
@@ -203,24 +260,27 @@ function buildOrderEmbed(order, state = "new") {
     });
   }
 
-  // 3. تنظيف رابط الصورة النهائي وتحويل روابط الرفع العادية لروابط ديسكورد المباشرة
+  // 3. تنظيف وتحويل رابط الصورة
   if (finalImgUrl) {
-    // إزالة أي رموز غريبة علقت بالرابط نتيجة الرفع أو القص
+    // إزالة أي رموز غريبة
     finalImgUrl = finalImgUrl.replace(/[><`"'\x00-\x1F\x7F]/g, "").trim();
 
-    // تحويل روابط موقع Imgur لروابط مباشرة
+    // تحويل روابط Imgur لروابط مباشرة
     if (finalImgUrl.includes("imgur.com/") && !finalImgUrl.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
       finalImgUrl = finalImgUrl.replace("imgur.com/", "i.imgur.com/") + ".png";
     }
-    
-    // تحويل روابط موقع top4top لروابط مباشرة
+
+    // تحويل روابط top4top لروابط مباشرة
     if (finalImgUrl.includes("top4top.io/index.php?v=")) {
       finalImgUrl = finalImgUrl.replace("index.php?v=", "uploads/png/top4top_") + ".png";
     }
 
-    // تفعيل وعرض الصورة بشكل كامل وعريض أسفل الإمبد
+    // تفعيل الصورة في الإمبد
     if (/^https?:\/\//i.test(finalImgUrl)) {
+      console.log(`[IMG] Setting embed image: ${finalImgUrl}`);
       embed.setImage(finalImgUrl);
+    } else {
+      console.log(`[IMG] URL failed final validation: ${finalImgUrl}`);
     }
   }
 
@@ -452,7 +512,7 @@ async function checkNewOrders() {
         const row = buildButtonRow(dbId);
 
         await channel.send({ embeds: [embed], components: [row] });
-        
+
         await db.query("UPDATE orders SET sent = 1 WHERE id = ?", [order.id]);
 
         console.log(
